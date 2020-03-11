@@ -1,0 +1,95 @@
+---
+title: "Activity Recognition"
+output: html_document
+date: April 1, 2019
+---
+
+Load libraries
+```{r message = FALSE}
+library(caret)
+library(mlbench)
+library(randomForest)
+```
+
+Get the training and test data and load them to the 'raw_data_train' and 'raw_data_test' data sets respectively
+```{r}
+url_train <- 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv'
+download.file(url_train, destfile = 'raw_data_train.csv')
+raw_data_train <- read.csv('raw_data_train.csv')
+
+
+url_test <- 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv'
+download.file(url_test, destfile = 'raw_data_test.csv')
+raw_data_test <- read.csv('raw_data_test.csv')
+```
+
+We take a look at the 'raw_data_train' data set:
+```{r eval = ''}
+str(raw_data_train)
+```
+
+We clean the data by removing the first seven columns which do not correspond to sensor measurements, 
+as well as columns which contain more than 50% of NA values.
+We also convert to numeric all the predictor variables.
+```{r}
+data <- subset(raw_data_train, select = -(1:7))
+data <- data[colSums(!is.na(data))>nrow(data)/2]
+
+for(i in 1:(ncol(data)-1)){data[,i] <- as.numeric(data[,i])}
+```
+
+We set the seed for reproducibility
+```{r}
+set.seed(703)
+```
+
+We remove redundant predictor variables by removing the highly correllated ones. We take the
+correlation threshold to be 0.7
+```{r}
+correlationMatrix <- cor(data[,1:85])
+highlyCorrelated <- findCorrelation(correlationMatrix, cutoff=0.7)
+data <- data[,-highlyCorrelated]
+```
+
+We split the dataset into a train data set and a validation data set with 7/3 ratio. 
+```{r}
+trainIndex = createDataPartition(data$classe, p=0.7, list=FALSE)
+train = data[trainIndex,]
+val = data[-trainIndex,]
+```
+
+We will train two models. The first one 'modelKNN' using the k-nearest neighbours algorithm
+and the second one 'modelRF' using the random forest algorithm.
+```{r}
+modelKNN <- train(classe ~ ., data = train, method = "knn")
+modelRF <- randomForest(classe~.,data=train)
+```
+
+We check the accuracy of the two models on the validation test
+```{r comment = ''}
+predKNN <- predict(modelKNN, newdata = val)
+predRF <- predict(modelRF, newdata = val)
+
+confKNN <- confusionMatrix(predKNN, val$classe)
+confRF <- confusionMatrix(predRF, val$classe)
+
+confKNN$overall['Accuracy']
+confRF$overall['Accuracy']
+```
+We see that the model using the random forest algorithm has the highest accuracy, and hence we will use this one on the test set. We estimate
+the out-of-sample error to be 1-0.9862362 = 0.0137638
+
+We subset the 'raw_data_test' to a test set containing only the predictor variables. We set any NA values to zero.
+```{r}
+test <- raw_data_test[, names(raw_data_test) %in% names(train)]
+test[is.na(test)] <- 0
+```
+
+We get the predictions of the 'modelRF' model on the test set and save them to the file 'predictions'.
+```{r}
+pred <- predict(modelRF, newdata = test)
+write.table(pred, 'predictions')
+```
+
+### References
+<http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har>
